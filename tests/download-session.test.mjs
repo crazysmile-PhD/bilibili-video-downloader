@@ -4,11 +4,13 @@ import { startDownloadSession } from '../src/features/downloads/session.ts'
 import { applyDownloadEvent } from '../src/features/downloads/events.ts'
 import { createProgressData } from '../src/features/downloads/progress.ts'
 import { deferred, makeProgress } from './download-fixtures.mjs'
+import { createProgressHarness } from './progress-fixtures.mjs'
 
 test('events received while restoring are applied after the snapshot in arrival order', async () => {
   const snapshot = deferred()
   const controller = new AbortController()
-  const progresses = new Map()
+  const frames = createProgressHarness()
+  const { store, progresses } = frames
   let receive
   let unlistened = 0
   const session = startDownloadSession(
@@ -18,20 +20,20 @@ test('events received while restoring are applied after the snapshot in arrival 
     },
     () => snapshot.promise,
     (tasks) => {
-      for (const { progress, state } of tasks) {
-        progresses.set(progress.task_id, createProgressData(progress, state))
-      }
+      store.replaceProgresses(tasks.map(({ progress, state }) => createProgressData(progress, state)))
     },
-    (event) => applyDownloadEvent(progresses, event),
+    (event) => applyDownloadEvent(store, event),
     controller.signal,
   )
   receive({ event: 'TaskStateUpdate', data: { task_id: 'task-1', state: 'Downloading' } })
   receive({ event: 'TaskDelete', data: { task_id: 'task-1' } })
   snapshot.resolve([{ progress: makeProgress(), state: 'Paused' }])
   const stop = await session
+  frames.runFrame()
   assert.equal(progresses.size, 0)
 
   receive({ event: 'TaskCreate', data: { progress: makeProgress(), state: 'Pending' } })
+  frames.runFrame()
   assert.equal(progresses.size, 1)
   stop()
   stop()

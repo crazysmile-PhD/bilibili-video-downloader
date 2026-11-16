@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createProgressData, getProgressPresentation } from '../src/features/downloads/progress.ts'
-import { applyDownloadEvent } from '../src/features/downloads/events.ts'
 import { makeProgress } from './download-fixtures.mjs'
+import { createProgressHarness } from './progress-fixtures.mjs'
 
 test('restored completed tasks immediately display 100 percent and their state', () => {
   const progress = createProgressData(makeProgress(), 'Completed')
@@ -44,31 +44,31 @@ test('unselected video processing does not hide remaining subtitle work', () => 
 })
 
 test('ordered events preserve task state and object identity across progress updates', () => {
-  const progresses = new Map()
-  applyDownloadEvent(progresses, { event: 'TaskCreate', data: { progress: makeProgress(), state: 'Pending' } })
+  const { progresses, apply } = createProgressHarness()
+  apply({ event: 'TaskCreate', data: { progress: makeProgress(), state: 'Pending' } })
   const original = progresses.get('task-1')
-  applyDownloadEvent(progresses, { event: 'TaskStateUpdate', data: { task_id: 'task-1', state: 'Downloading' } })
+  apply({ event: 'TaskStateUpdate', data: { task_id: 'task-1', state: 'Downloading' } })
   const progress = makeProgress({ episode_title: 'Updated episode' })
   progress.cover_task.selected = true
-  applyDownloadEvent(progresses, { event: 'ProgressUpdate', data: { progress } })
+  apply({ event: 'ProgressUpdate', data: { progress } })
   assert.equal(progresses.get('task-1'), original)
   assert.equal(original.state, 'Downloading')
   assert.equal(original.episode_title, 'Updated episode')
   assert.equal(original.taskIndicator, '封面')
 
-  applyDownloadEvent(progresses, { event: 'TaskSleeping', data: { task_id: 'task-1', remaining_sec: 2 } })
+  apply({ event: 'TaskSleeping', data: { task_id: 'task-1', remaining_sec: 2 } })
   assert.equal(original.taskIndicator, '将在2秒后继续下载')
-  applyDownloadEvent(progresses, { event: 'TaskStateUpdate', data: { task_id: 'task-1', state: 'Completed' } })
+  apply({ event: 'TaskStateUpdate', data: { task_id: 'task-1', state: 'Completed' } })
   assert.equal(original.percentage, 100)
   assert.equal(original.taskIndicator, '')
 })
 
 test('late updates cannot recreate a deleted task', () => {
-  const progresses = new Map()
+  const { progresses, apply } = createProgressHarness()
   const progress = makeProgress()
-  applyDownloadEvent(progresses, { event: 'TaskCreate', data: { progress, state: 'Paused' } })
-  applyDownloadEvent(progresses, { event: 'TaskDelete', data: { task_id: progress.task_id } })
-  applyDownloadEvent(progresses, { event: 'ProgressUpdate', data: { progress } })
-  applyDownloadEvent(progresses, { event: 'ProgressPreparing', data: { task_id: progress.task_id } })
+  apply({ event: 'TaskCreate', data: { progress, state: 'Paused' } })
+  apply({ event: 'TaskDelete', data: { task_id: progress.task_id } })
+  apply({ event: 'ProgressUpdate', data: { progress } })
+  apply({ event: 'ProgressPreparing', data: { task_id: progress.task_id } })
   assert.equal(progresses.size, 0)
 })

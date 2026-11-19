@@ -1,10 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
-use eyre::WrapErr;
-use parking_lot::RwLock;
+use eyre::{WrapErr, ensure};
+use parking_lot::{Mutex, RwLock};
 use serde::Serialize;
 use specta::Type;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_specta::Event;
 use tokio::{
     sync::{SemaphorePermit, watch},
@@ -28,11 +28,11 @@ pub struct DownloadTask {
     pub app: AppHandle,
     pub state_sender: watch::Sender<DownloadTaskState>,
     pub restart_sender: watch::Sender<()>,
-    pub cancel_sender: watch::Sender<()>,
     pub delete_sender: watch::Sender<()>,
     pub task_id: String,
     pub trace_fields: DownloadTaskTraceFields,
     pub progress: RwLock<DownloadProgress>,
+    update_lock: Mutex<()>,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -147,10 +147,11 @@ impl DownloadTask {
             );
             let _enter = span.enter();
 
-            if let Err(err) = progress.save(app, true) {
+            if let Err(err) = app.get_download_manager().progress_store.create(&progress) {
                 let err_title = "保存下载进度到文件失败";
                 let message = err.to_message();
                 tracing::error!(err_title, message);
+                continue;
             }
 
             let auto_start = app.get_config().read().auto_start_download_task;
@@ -162,18 +163,17 @@ impl DownloadTask {
 
             let (state_sender, _) = watch::channel(init_state);
             let (restart_sender, _) = watch::channel(());
-            let (cancel_sender, _) = watch::channel(());
             let (delete_sender, _) = watch::channel(());
 
             let task = Arc::new(Self {
                 app: app.clone(),
                 state_sender,
                 restart_sender,
-                cancel_sender,
                 delete_sender,
                 task_id: progress.task_id.clone(),
                 trace_fields: DownloadTaskTraceFields::from(&progress),
                 progress: RwLock::new(progress),
+                update_lock: Mutex::new(()),
             });
 
             tauri::async_runtime::spawn(task.clone().process(true));
@@ -192,18 +192,17 @@ impl DownloadTask {
         };
         let (state_sender, _) = watch::channel(init_state);
         let (restart_sender, _) = watch::channel(());
-        let (cancel_sender, _) = watch::channel(());
         let (delete_sender, _) = watch::channel(());
 
         let task = Arc::new(Self {
             app,
             state_sender,
             restart_sender,
-            cancel_sender,
             delete_sender,
             task_id: progress.task_id.clone(),
             trace_fields: DownloadTaskTraceFields::from(&progress),
             progress: RwLock::new(progress),
+            update_lock: Mutex::new(()),
         });
 
         tauri::async_runtime::spawn(task.clone().process(false));
@@ -224,17 +223,18 @@ impl DownloadTask {
     }
 
     #[instrument(level = "error", skip_all, fields(task_id = self.task_id))]
-    pub fn cancel(&self) {
-        let _ = self.cancel_sender.send(());
-    }
-
-    #[instrument(level = "error", skip_all, fields(task_id = self.task_id))]
     pub fn delete(&self) -> eyre::Result<()> {
-        self.delete_progress_file()?;
-        self.delete_sender
-            .send(())
-            .map_err(eyre::Report::from)
-            .wrap_err("通知ID对应的下载任务删除失败")?;
+        ensure!(
+            !self.delete_sender.is_closed(),
+            "下载任务已停止，无法通知删除"
+        );
+        self.app
+            .get_download_manager()
+            .progress_store
+            .delete(&self.task_id)?;
+        // Once deletion commits, notification cannot fail and leave an in-memory
+        // task whose checkpoint has already been removed.
+        self.delete_sender.send_replace(());
         tracing::debug!("已通知ID对应的下载任务删除");
         Ok(())
     }
@@ -304,7 +304,6 @@ impl DownloadTask {
 
         let mut state_receiver = self.state_sender.subscribe();
         let mut restart_receiver = self.restart_sender.subscribe();
-        let mut cancel_receiver = self.cancel_sender.subscribe();
         let mut delete_receiver = self.delete_sender.subscribe();
 
         let mut permit = None;
@@ -340,8 +339,6 @@ impl DownloadTask {
                     tracing::debug!("下载任务已重来");
                     download_task_option = None;
                 }
-
-                _ = cancel_receiver.changed() => return,
 
                 _ = delete_receiver.changed() => {
                     let _ = DownloadEvent::TaskDelete {
@@ -512,39 +509,25 @@ impl DownloadTask {
 
     #[instrument(level = "error", skip_all)]
     pub fn update_progress(&self, update_fn: impl FnOnce(&mut DownloadProgress)) {
-        // 修改数据
+        // Keep publication order without holding the progress lock during emit.
+        let _update = self.update_lock.lock();
         let updated_progress = {
             let mut progress = self.progress.write();
             update_fn(&mut progress);
-            // TODO: 这里应该返回 progress.clone()
-            // 专门用一个 {} 框出来就是为了避免在emit和save期间仍持有写锁
-            // 然而这里弄错了progress的类型
-            // 错把progress当成了DownloadProgress，实则类型为RwLockWriteGuard
-            progress
+            progress.clone()
         };
-        // 发送更新事件并保存到文件
         let _ = DownloadEvent::ProgressUpdate {
             progress: updated_progress.clone(),
         }
         .emit(&self.app);
-
-        if let Err(err) = updated_progress.save(&self.app, false) {
-            let err_title = "保存下载进度到文件失败";
-            let message = err.to_message();
-            tracing::error!(err_title, message);
+        if let Err(err) = self
+            .app
+            .get_download_manager()
+            .progress_store
+            .save(&updated_progress)
+        {
+            tracing::error!(err_title = "保存下载进度失败", message = ?err);
         }
-    }
-
-    #[instrument(level = "error", skip_all, fields(task_id = self.task_id))]
-    fn delete_progress_file(&self) -> eyre::Result<()> {
-        let app_data_dir = self.app.path().app_data_dir()?;
-        let task_file = app_data_dir
-            .join(".下载任务")
-            .join(format!("{}.json", self.task_id));
-        if task_file.exists() {
-            std::fs::remove_file(task_file)?;
-        }
-        Ok(())
     }
 }
 

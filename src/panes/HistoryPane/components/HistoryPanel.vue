@@ -44,7 +44,7 @@ let arcMaxDuration: number = 0
 
 const selectedDeviceType = ref<DeviceType>('All')
 
-watch(durationTabName, () => {
+watch(durationTabName, async () => {
   if (durationTabName.value === 'all') {
     arcMinDuration = 0
     arcMaxDuration = 0
@@ -62,10 +62,10 @@ watch(durationTabName, () => {
     arcMaxDuration = 0
   }
 
-  getHistory(1)
+  await getHistory(1)
 })
 
-watch(startTimeTabName, () => {
+watch(startTimeTabName, async () => {
   const tabName = startTimeTabName.value
   if (tabName === 'date-picker') {
     return
@@ -90,7 +90,7 @@ watch(startTimeTabName, () => {
     addTimeEnd = 0
   }
 
-  getHistory(1)
+  await getHistory(1)
 })
 
 watch(selectedDeviceType, () => getHistory(1))
@@ -209,7 +209,7 @@ async function downloadCheckedEpisodes() {
   }
 }
 
-function handleTimePickerConfirm(range: [number, number] | null) {
+async function handleTimePickerConfirm(range: [number, number] | null) {
   if (range === null) {
     return
   }
@@ -218,7 +218,7 @@ function handleTimePickerConfirm(range: [number, number] | null) {
   addTimeEnd = Math.floor(new Date(range[1]).setHours(23, 59, 59, 0) / 1000)
 
   startTimeTabName.value = 'date-picker'
-  getHistory(1)
+  await getHistory(1)
 }
 
 function getInitRange(): [number, number] {

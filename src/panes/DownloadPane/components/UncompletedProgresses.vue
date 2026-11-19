@@ -6,7 +6,7 @@ import { DropdownOption, NDropdown, NIcon } from 'naive-ui'
 import { PhPause, PhChecks, PhTrash, PhCaretRight, PhArrowClockwise } from '@phosphor-icons/vue'
 import { useStore } from '../../../store.ts'
 import DownloadProgress from './DownloadProgress.vue'
-import { ProgressData } from '../DownloadPane.vue'
+import type { ProgressData } from '../../../features/downloads/types.ts'
 
 const store = useStore()
 

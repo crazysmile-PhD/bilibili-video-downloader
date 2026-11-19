@@ -6,85 +6,14 @@ import TaskToQueueAnimation from './components/TaskToQueueAnimation.vue'
 import { EpisodeInfo } from './panes/SearchPane/components/EpisodeCard.vue'
 import { AudioQuality, CodecType, VideoQuality } from './bindings'
 
-export function extractAid(url: string): number | undefined {
-  const parsedUrl = new URL(url)
-  const pathname = parsedUrl.pathname
-  const segments = pathname.split('/')
-  for (const segment of segments) {
-    if (segment.toLowerCase().startsWith('av')) {
-      const aidString = segment.substring(2)
-      const aid = parseInt(aidString, 10)
-      if (!isNaN(aid)) {
-        return aid
-      }
-    }
-  }
-}
-
-export function extractBvid(url: string): string | undefined {
-  const parsedUrl = new URL(url)
-  const pathname = parsedUrl.pathname
-  const segments = pathname.split('/')
-  for (const segment of segments) {
-    if (segment.toLowerCase().startsWith('bv')) {
-      return segment
-    }
-  }
-}
-
-export function extractEpId(url: string): number | undefined {
-  const parsedUrl = new URL(url)
-  const pathname = parsedUrl.pathname
-  const segments = pathname.split('/')
-  for (const segment of segments) {
-    if (segment.toLowerCase().startsWith('ep')) {
-      const epIdString = segment.substring(2)
-      const epId = parseInt(epIdString, 10)
-      if (!isNaN(epId)) {
-        return epId
-      }
-    }
-  }
-}
-
-export function extractSeasonId(url: string): number | undefined {
-  const parsedUrl = new URL(url)
-  const pathname = parsedUrl.pathname
-  const segments = pathname.split('/')
-  for (const segment of segments) {
-    if (segment.toLowerCase().startsWith('ss')) {
-      const seasonIdString = segment.substring(2)
-      const seasonId = parseInt(seasonIdString, 10)
-      if (!isNaN(seasonId)) {
-        return seasonId
-      }
-    }
-  }
-}
-
-export function extractUid(url: string): number | undefined {
-  const parsedUrl = new URL(url)
-  if (parsedUrl.hostname === 'space.bilibili.com') {
-    const segments = parsedUrl.pathname.split('/')
-    const uidSegment = segments[1]
-    const uid = parseInt(uidSegment, 10)
-    if (!isNaN(uid)) {
-      return uid
-    }
-  }
-}
-
-export function extractMediaListId(url: string): number | undefined {
-  const parsedUrl = new URL(url)
-  const params = new URLSearchParams(parsedUrl.search)
-  const fid = params.get('fid')
-  if (fid !== null) {
-    const mediaListId = parseInt(fid, 10)
-    if (!isNaN(mediaListId)) {
-      return mediaListId
-    }
-  }
-}
+export {
+  extractAid,
+  extractBvid,
+  extractEpId,
+  extractSeasonId,
+  extractUid,
+  extractMediaListId,
+} from './features/search/identifiers.ts'
 
 export function useEpisodeDropdown(onCheck: () => void, onUncheck: () => void, onSelectAll: () => void) {
   const dropdownX = ref<number>(0)

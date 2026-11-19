@@ -26,6 +26,8 @@ pub unsafe fn register_host_api_v1(api_ptr: *const HostApiV1) -> i32 {
         return 1;
     }
 
+    // SAFETY: the caller must supply a valid HostApiV1 for this call. Copy the table
+    // before returning so the SDK does not retain the caller's pointer.
     let api = unsafe { *api_ptr };
     *HOST_API_V1.lock() = Some(api);
 
@@ -49,6 +51,8 @@ pub mod host {
 
         let mut output_ptr: *mut u8 = std::ptr::null_mut();
         let mut output_len: usize = 0;
+        // SAFETY: the registered trusted host implements V1; both output slots
+        // are writable and remain alive until the call finishes.
         let rc = unsafe { (host_api.get_config_json)(&raw mut output_ptr, &raw mut output_len) };
         if rc != 0 {
             return Err(eyre::eyre!("host get_config_json 调用失败: rc={rc}"));
@@ -58,7 +62,10 @@ pub mod host {
             return Err(eyre::eyre!("host get_config_json 返回的缓冲区为空指针"));
         }
 
+        // SAFETY: a successful V1 call returns an initialized output_len-byte
+        // allocation valid until free_buffer; null was checked above.
         let output_bytes = unsafe { std::slice::from_raw_parts(output_ptr, output_len) }.to_vec();
+        // SAFETY: free the exact host-owned allocation once using its allocator.
         unsafe {
             (host_api.free_buffer)(output_ptr, output_len);
         }
@@ -78,7 +85,8 @@ macro_rules! export_plugin_v1 {
         use $crate::parking_lot::Mutex;
 
         fn to_cstring_lossy(value: String) -> CString {
-            // Replacing NUL guarantees CString invariants and avoids fallible construction.
+            // SAFETY: replacing all NULs guarantees CString's interior-NUL invariant;
+            // from_vec_unchecked appends the terminating NUL itself.
             let sanitized = value.replace('\0', " ");
             unsafe { CString::from_vec_unchecked(sanitized.into_bytes()) }
         }
@@ -113,6 +121,7 @@ macro_rules! export_plugin_v1 {
 
         #[unsafe(export_name = "bilibili_video_downloader_plugin_set_host_api_v1")]
         pub unsafe extern "C" fn set_host_api_v1(api: *const $crate::HostApiV1) -> i32 {
+            // SAFETY: this entry point forwards the caller's V1 pointer contract.
             let rc = unsafe { $crate::register_host_api_v1(api) };
             if rc != 0 {
                 set_last_error_v1("无效的 host api 指针".to_string());
@@ -132,6 +141,8 @@ macro_rules! export_plugin_v1 {
                 return 1;
             }
 
+            // SAFETY: the V1 caller provides input_len initialized bytes valid for
+            // this call; null was checked and parsing finishes before returning.
             let input_slice = unsafe { std::slice::from_raw_parts(input_ptr, input_len) };
             let hook_input: $crate::HookInputV1 = match $crate::serde_json::from_slice(input_slice)
             {
@@ -169,6 +180,8 @@ macro_rules! export_plugin_v1 {
             let len = boxed.len();
             let ptr = Box::into_raw(boxed) as *mut u8;
 
+            // SAFETY: V1 requires writable output slots, checked for null above.
+            // The returned allocation stays owned by the caller until free_buffer.
             unsafe {
                 *out_ptr = ptr;
                 *out_len = len;
@@ -183,6 +196,8 @@ macro_rules! export_plugin_v1 {
                 return;
             }
             let raw_slice = std::ptr::slice_from_raw_parts_mut(ptr, len);
+            // SAFETY: V1 requires the exact pointer/length returned by on_hook_v1
+            // and exactly one call to free it through this same allocator.
             unsafe {
                 drop(Box::from_raw(raw_slice));
             }

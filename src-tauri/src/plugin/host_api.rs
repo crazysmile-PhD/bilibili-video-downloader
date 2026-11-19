@@ -41,6 +41,8 @@ unsafe extern "C" fn host_get_config_json_v1(out_ptr: *mut *mut u8, out_len: *mu
     let len = boxed.len();
     let ptr = Box::into_raw(boxed).cast::<u8>();
 
+    // SAFETY: the HostApiV1 caller must provide writable output slots; both were
+    // checked for null. Ownership of the boxed allocation transfers to the caller.
     unsafe {
         *out_ptr = ptr;
         *out_len = len;
@@ -55,6 +57,8 @@ unsafe extern "C" fn host_free_buffer_v1(ptr: *mut u8, len: usize) {
     }
 
     let raw_slice = std::ptr::slice_from_raw_parts_mut(ptr, len);
+    // SAFETY: HostApiV1 requires this exact pointer/length to originate from
+    // host_get_config_json_v1 and to be freed once with this allocator.
     unsafe {
         drop(Box::from_raw(raw_slice));
     }

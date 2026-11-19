@@ -80,15 +80,17 @@ pub fn save_config(app: AppHandle, config: Config) -> CommandResult<()> {
     {
         // 包裹在大括号中，以便自动释放写锁
         let mut config_state = config_state.write();
-        *config_state = config;
-        config_state
+        config
             .save(&app)
             .map_err(|err| CommandError::from("保存配置失败", err))?;
+        *config_state = config;
         tracing::debug!("保存配置成功");
     }
 
     if proxy_changed {
-        bili_client.reload_client();
+        bili_client
+            .reload_client()
+            .map_err(|err| CommandError::from("重新建立网络客户端失败", err))?;
     }
 
     if file_logger_changed {

@@ -138,3 +138,52 @@ fn sanitize_xml(s: &str) -> String {
     }
     s.chars().filter(|&c| is_valid_xml_char(c)).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_entities_cdata_unicode_and_ignores_unrelated_metadata() {
+        let xml = r#"<i><chatid>42</chatid><maxlimit>1000</maxlimit><d p="1.25,1,25,16711680,0,0,x,1">你好 &amp; 👋</d><d p="2,5,36,255,0,0,x,2"><![CDATA[a < b]]></d></i>"#;
+        let parsed = xml_to_danmakus(xml).unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].content, "你好 & 👋");
+        assert_eq!(parsed[0].timeline_s, 1.25);
+        assert_eq!(parsed[0].rgb, (255, 0, 0));
+        assert_eq!(parsed[1].content, "a < b");
+        assert_eq!(parsed[1].r#type, DanmakuType::Top);
+    }
+
+    #[test]
+    fn serialized_danmaku_round_trips_and_removes_invalid_xml_controls() {
+        let model = DanmakuXmlITag {
+            chatid: 42,
+            elems: vec![DamakuXmlDTag {
+                p: "0,4,25,16777215".into(),
+                body: Some("<hello> & 世界".into()),
+            }],
+        };
+        let xml = yaserde::ser::to_string(&model).unwrap();
+        let parsed = xml_to_danmakus(&xml).unwrap();
+        assert_eq!(parsed[0].content, "<hello> & 世界");
+        let with_control = xml.replace("世界", "世\u{0001}界");
+        assert_eq!(xml_to_danmakus(&with_control).unwrap(), parsed);
+    }
+
+    #[test]
+    fn malformed_xml_and_invalid_metadata_return_errors() {
+        for xml in [
+            "<i><d>",
+            r#"<i><chatid>1</chatid><d>missing p</d></i>"#,
+            r#"<i><chatid>1</chatid><d p="bad,1,25,255">x</d></i>"#,
+        ] {
+            assert!(xml_to_danmakus(xml).is_err(), "{xml}");
+        }
+        assert!(
+            xml_to_danmakus("<i><chatid>1</chatid></i>")
+                .unwrap()
+                .is_empty()
+        );
+    }
+}

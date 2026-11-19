@@ -47,11 +47,11 @@ onMounted(async () => {
 
 watch(
   () => selectedMediaListId.value,
-  () => {
+  async () => {
     if (favFolders.value === undefined) {
       return
     }
-    getFav(1)
+    await getFav(1)
   },
 )
 

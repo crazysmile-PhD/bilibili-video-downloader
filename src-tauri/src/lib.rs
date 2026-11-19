@@ -8,10 +8,15 @@ mod events;
 mod extensions;
 mod logger;
 mod plugin;
+mod storage;
 mod types;
 mod utils;
 mod wbi;
-#[allow(warnings)]
+#[allow(
+    dead_code,
+    clippy::empty_docs,
+    reason = "Generated protobuf messages include unused schema types and empty source comments."
+)]
 mod protobuf {
     include!("./bilibili.community.service.dm.v1.rs");
 }
@@ -44,9 +49,13 @@ fn generate_context() -> tauri::Context<Wry> {
 }
 
 #[allow(clippy::missing_panics_doc)]
+#[expect(
+    clippy::expect_used,
+    reason = "Failure to initialize the application or generated bindings is fatal at startup."
+)]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    install_custom_eyre_handler().unwrap();
+    install_custom_eyre_handler().expect("failed to initialize error reporting");
 
     let builder = tauri_specta::Builder::<Wry>::new()
         .commands(tauri_specta::collect_commands![
@@ -101,6 +110,8 @@ pub fn run() {
 
     // 解决Ubuntu24.04窗口全白的问题
     #[cfg(target_os = "linux")]
+    // SAFETY: this runs during startup before this application starts its workers.
+    // The variable is set once to configure the Linux webview before its creation.
     unsafe {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
@@ -127,10 +138,10 @@ pub fn run() {
             let config = RwLock::new(Config::new(app.handle())?);
             app.manage(config);
 
-            let bili_client = BiliClient::new(app.handle().clone());
+            let bili_client = BiliClient::new(app.handle().clone())?;
             app.manage(bili_client);
 
-            let download_manager = DownloadManager::new(app.handle().clone());
+            let download_manager = DownloadManager::new(app.handle().clone())?;
             app.manage(download_manager);
 
             logger::init(app.handle())?;

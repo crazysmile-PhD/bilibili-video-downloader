@@ -8,3 +8,6 @@ name = "bilibili_video_downloader_plugin_api"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true

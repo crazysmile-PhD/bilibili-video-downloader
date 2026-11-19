@@ -14,9 +14,13 @@ pub async fn execute_hook(
 ) -> eyre::Result<HookOutputV1> {
     let input_bytes = serde_json::to_vec(input)?;
     let api = plugin.api.clone();
+    let call_lock = plugin.call_lock.clone();
 
     let (tx, rx) = tokio::sync::oneshot::channel::<eyre::Result<Vec<u8>>>();
     tauri::async_runtime::spawn_blocking(move || {
+        // Serialize the full FFI exchange, so another task cannot replace the
+        // plugin's last-error buffer before this call has copied it.
+        let _call = call_lock.lock();
         let result = call_on_hook_blocking(api, &input_bytes);
         let _ = tx.send(result);
     });
@@ -34,6 +38,8 @@ fn call_on_hook_blocking(
 ) -> eyre::Result<Vec<u8>> {
     let mut output_ptr: *mut u8 = std::ptr::null_mut();
     let mut output_len: usize = 0;
+    // SAFETY: the loaded library implements the trusted Plugin V1 ABI; the input
+    // slice and writable output slots remain alive for the duration of this call.
     let rc = unsafe {
         api.on_hook(
             input_bytes.as_ptr(),
@@ -50,17 +56,23 @@ fn call_on_hook_blocking(
         return Err(eyre!("插件返回空输出缓冲区"));
     }
 
+    // SAFETY: on success the trusted ABI promises an initialized output_len-byte
+    // allocation valid until free_buffer. Null was checked and api keeps it loaded.
     let output_bytes = unsafe { std::slice::from_raw_parts(output_ptr, output_len) }.to_vec();
+    // SAFETY: return that same allocation exactly once to the plugin's allocator.
     unsafe { api.free_buffer(output_ptr, output_len) };
     Ok(output_bytes)
 }
 
 fn get_last_error(api: &Arc<Container<PluginDylibApi>>) -> String {
+    // SAFETY: api owns the loaded library and exposes the trusted V1 entry point.
     let error_ptr = unsafe { api.last_error() };
     if error_ptr.is_null() {
         return "获取错误信息失败，error_ptr为null".to_string();
     }
 
+    // SAFETY: the V1 ABI promises a NUL-terminated string valid until the next
+    // plugin call; we copy it before making any further call and checked null.
     let error_cstr = unsafe { CStr::from_ptr(error_ptr) };
     error_cstr.to_string_lossy().to_string()
 }

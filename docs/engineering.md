@@ -1,0 +1,66 @@
+# 架構、效能與 CI 規則
+
+這份文件把使用者的「先質疑、刪除、簡化、縮短週期，最後自動化」落實為少數可檢查的規則。規則由專案中的失敗模式推導；論文提供設計與量測方法，並不替本專案保證效能。
+
+## 研究依據與本專案的取捨
+
+| 研究                                                                                                                                                                                              | 採用的方法                                                             | 在本專案的落點                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Parnas，1972，[On the Criteria To Be Used in Decomposing Systems into Modules](https://doi.org/10.1145/361598.361623)，另見 [CMU 技術報告](https://prl.khoury.northeastern.edu/img/p-tr-1971.pdf) | 依容易改變的設計決策劃分模組，隱藏內部表示；分層本身也可能增加執行成本 | 把 API envelope、檔案替換、下載排程及前端事件規則隔離；保留原有命令介面，使用直接函式與泛型而非新增動態分派層 |
+| Mytkowicz 等，2009，[Producing Wrong Data Without Doing Anything Obviously Wrong!](https://evaluate.inf.usi.ch/node/4)                                                                            | 實驗設定會造成量測偏差，需檢查比較順序及環境因素                       | 基準使用同一份資料，交替新舊實作的執行順序；區分 CPU 解碼和網路、磁碟、GUI 工作，不把結果外推到下載吞吐量     |
+| Kalibera、Jones，2013，[Rigorous Benchmarking in Reasonable Time](https://kar.kent.ac.uk/33611/)                                                                                                  | 重複量測並呈現不確定性，把實驗成本放在主要變異來源                     | 每個資料量預熱、收集 30 組原始樣本及配對比值區間；正式比較重複啟動程序，避免只看一次最快結果                  |
+
+以上是工程上的應用，不是完整複製論文實驗。微基準的 bootstrap 區間只描述該次程序的樣本，沒有涵蓋不同硬體、編譯器或系統負載的變異。
+
+## 保留下來的模組邊界
+
+- `bili_client.rs` 隱藏 HTTP client 與建立／替換方式；`auth.rs` 管理登入及 Cookie，`content.rs` 管理內容查詢，`media.rs` 管理媒體傳輸。它們保留同一個 `BiliClient` 介面。
+- `bili_client/response.rs` 統一 HTTP 狀態、API 錯誤、`data/result` 以及資料解碼規則。直接消耗 JSON Value，移除中間字串及成功路徑上大量的錯誤訊息配置。
+- `storage.rs` 是設定、插件 metadata 與任務進度共用的同目錄暫存檔／原子替換實作。`progress_store.rs` 負責任務檔案與刪除的順序；資料模型不操作 Tauri 路徑。
+- `downloader/chunk_transfer.rs` 限制存活工作數並傳遞中斷及失敗。`media_download.rs` 共用影音暫存檔與斷點處理；彈幕分段請求也依並行設定限制工作數，子工作異常不再被忽略。
+- `features/downloads` 的事件、進度及 session 邏輯可獨立測試；Tauri／Vue 接線留在 composable。`features/search/identifiers.ts` 只負責識別碼解析，拒絕部分有效的數字前綴。
+
+## 八類規則如何落實
+
+| 類別             | 禁止的大宗寫法                                        | 自動檢查或證據                                                         |
+| ---------------- | ----------------------------------------------------- | ---------------------------------------------------------------------- |
+| 邊界與重複規則   | 共用資料層反向匯入畫面；各 API 自行複製 envelope 規則 | ESLint 匯入限制、API 解碼回歸測試、程式碼審查                          |
+| 並行與資源       | 無上限建立工作、漏掉中斷或 panic                      | 分片工作峰值與取消測試                                                 |
+| 鎖與阻塞         | 持有同步鎖跨 await、在 runtime worker 上 sleep        | Clippy、移除 parking_lot 的 send_guard、阻塞操作的範圍審查             |
+| 失敗處理         | 外部操作 unwrap、丟棄 Promise、遺留 dbg／todo         | Rust unused_must_use、Clippy、TypeScript、型別感知 ESLint              |
+| 配置與重複處理   | JSON 字串往返、熱路徑的大量 clone／重複掃描           | CPU 微基準、Clippy perf 群組與審查；不以文字掃描假裝能偵測所有慢演算法 |
+| 生命週期與一致性 | 訂閱未解除、刪除後復活、寫壞正式檔案                  | session、分片、儲存與設定回歸測試                                      |
+| 原生邊界         | 無 SAFETY 前提的 unsafe、同時操作插件借用緩衝區       | Clippy undocumented_unsafe_blocks、明確 ABI 契約與序列化呼叫           |
+| 量測與變更       | 以單次計時宣稱加速、只加抽象卻沒有行為或資料依據      | 基準原始樣本、輸出相等檢查與審查                                       |
+
+規則集中在 `AGENTS.md`、`clippy.toml`、Cargo manifests、`eslint.config.js` 與 `tsconfig.json`。啟動失敗允許有理由的 `expect`；測試允許斷言式 unwrap；產生碼只保留具理由的必要例外。
+
+### 前端工具限制
+
+既有七個 `.vue` 檔在 script 中混用 TSX；上游 [typescript-eslint #9934](https://github.com/typescript-eslint/typescript-eslint/issues/9934) 及 [Vue 官方設定文件](https://github.com/vuejs/eslint-config-typescript#project-options) 記錄了它與型別感知規則的衝突。這七個固定路徑保留語法 ESLint 與全量 `vue-tsc`，不宣稱它們受 Promise 型別規則完整涵蓋；其他 TS／TSX／Vue TS 都啟用相關規則。新增 Vue 元件強制使用 TS script；渲染函式可放在正常 `.tsx` 檔，不擴大例外清單。
+
+## CI 是什麼，以及這裡檢查什麼
+
+CI（持續整合）會在 GitHub 收到變更時，自動執行檢查。本專案使用 GitHub Actions；CI 不屬於單一程式語言。
+
+`CI` workflow 在 PR、main／develop 推送、merge queue 與手動觸發時執行。取消已被新提交取代的舊工作，但不使用路徑過濾讓必要檢查跳過。
+
+1. 前端：鎖檔安裝、格式、ESLint、TypeScript、單元測試與正式建置。
+2. 後端：固定 Rust 1.100.0，Windows／Linux／macOS 上執行零警告 Clippy、核心與插件測試；Linux 另檢查 Rust 格式。
+3. `quality-gate`：所有必要工作成功才通過；失敗、取消或跳過都不算成功。
+
+GitHub 的 Actions 開關與「檢查沒過禁止合併」是不同設定。分支保護應要求 `quality-gate` 並要求基底為最新；設定是否已套用需以 GitHub 的實際狀態確認。
+
+## 效能量測
+
+```sh
+pnpm benchmark
+```
+
+`src-tauri/benches/api_decode.rs` 比較舊有 envelope→Value→字串→型別與現行 Value→型別流程，確認輸出相等。輸入含 Unicode，資料量為 20／200／2000 筆。每個資料量預熱 20 次、交替比較 30 組；輸出包含所有樣本、中位數、配對加速比與 bootstrap 區間。
+
+使用 `BENCH_OUTPUT` 指定已存在目錄下的絕對輸出路徑；Cargo 執行時的相對路徑以 `src-tauri` 為基準。正式記錄至少重複三個程序，記錄 OS、CPU、Rust 版本、編譯 profile、負載及樣本；避免同時進行其他編譯。這不是整體下載速度測試。
+
+一般 PR 不以短時間計時作為硬門檻；確定性的工作數上限、取消、內容一致性與型別規則是硬門檻。手動 CI 可選擇執行基準並保存 artifact；評估穩定基準後，再設定可說明的效能預算。
+
+本機三次程序的結果與完整樣本見 [2026-11-19 量測記錄](benchmarks/2026-11-19/README.md)。

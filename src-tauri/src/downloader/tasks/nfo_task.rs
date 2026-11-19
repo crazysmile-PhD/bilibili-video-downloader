@@ -5,7 +5,7 @@ use eyre::{OptionExt, WrapErr, eyre};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tracing::instrument;
-use yaserde::{YaDeserialize, YaSerialize};
+use yaserde::YaSerialize;
 
 use crate::{
     config::FileExistAction,
@@ -233,7 +233,7 @@ impl NfoTask {
     }
 }
 
-#[derive(YaSerialize, YaDeserialize)]
+#[derive(YaSerialize)]
 #[yaserde(rename = "movie")]
 struct Movie {
     title: String,
@@ -251,14 +251,14 @@ struct Movie {
     actor: Vec<Actor>,
 }
 
-#[derive(YaSerialize, YaDeserialize)]
+#[derive(YaSerialize)]
 #[yaserde(rename = "set")]
 struct Set {
     name: String,
     overview: String,
 }
 
-#[derive(YaSerialize, YaDeserialize)]
+#[derive(YaSerialize)]
 #[yaserde(rename = "actor")]
 struct Actor {
     name: String,
@@ -267,7 +267,7 @@ struct Actor {
     thumb: String,
 }
 
-#[derive(YaSerialize, YaDeserialize)]
+#[derive(YaSerialize)]
 #[yaserde(rename = "tvshow")]
 struct Tvshow {
     title: String,
@@ -283,7 +283,7 @@ struct Tvshow {
     director: Vec<String>,
 }
 
-#[derive(YaSerialize, YaDeserialize)]
+#[derive(YaSerialize)]
 #[yaserde(rename = "episodedetails")]
 struct EpisodeDetails {
     title: String,
@@ -568,5 +568,32 @@ impl CheeseInfo {
             yaserde::ser::to_string_with_config(&episode_details, &cfg).map_err(|e| eyre!(e))?;
 
         Ok(nfo)
+    }
+}
+
+#[cfg(test)]
+mod xml_tests {
+    use super::*;
+
+    #[test]
+    fn serializes_nfo_text_with_xml_escaping_and_preserves_elements() {
+        let show = Tvshow {
+            title: "标题 < & >".into(),
+            plot: "说明 👋".into(),
+            tagline: None,
+            premiered: "2026-01-01".into(),
+            year: 2026,
+            studio: vec!["Bilibili".into()],
+            status: "Continuing".into(),
+            genre: vec!["动画".into()],
+            tag: vec![],
+            country: vec![],
+            director: vec!["测试".into()],
+        };
+        let xml = yaserde::ser::to_string(&show).unwrap();
+        assert!(xml.contains("<tvshow>"));
+        assert!(xml.contains("<title>标题 &lt; &amp; &gt;</title>"));
+        assert!(xml.contains("<year>2026</year>"));
+        assert!(xml.contains("<plot>说明 👋</plot>"));
     }
 }

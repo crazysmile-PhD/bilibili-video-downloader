@@ -301,7 +301,6 @@ dependencies = [
  "parking_lot 0.12.4",
  "prost",
  "rand 0.9.1",
- "rayon",
  "reqwest",
  "reqwest-middleware",
  "reqwest-retry",
@@ -318,6 +317,7 @@ dependencies = [
  "tauri-plugin-os",
  "tauri-plugin-window-state",
  "tauri-specta",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-appender",
@@ -676,25 +676,6 @@ name = "crossbeam-channel"
 version = "0.5.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-deque"
-version = "0.8.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5181e0de7b61eb03a81e347d6dd8797bae9da5146707b51077e2d71a54ec0ceb"
-dependencies = [
- "crossbeam-epoch",
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-epoch"
-version = "0.9.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -3382,26 +3363,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
-name = "rayon"
-version = "1.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d"
-dependencies = [
- "either",
- "rayon-core",
-]
-
-[[package]]
-name = "rayon-core"
-version = "1.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
-dependencies = [
- "crossbeam-deque",
- "crossbeam-utils",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3839,14 +3800,14 @@ dependencies = [
 
 [[package]]
 name = "serde_tokenstream"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64060d864397305347a78851c51588fd283767e7e7589829e8121d65512340f1"
+checksum = "db95b8acf6eca5bc1bc771a7d7fb1a0d1485bdef0c46eec2f573bbaf4b4118f8"
 dependencies = [
  "proc-macro2",
  "quote",
  "serde",
- "syn 2.0.104",
+ "syn 3.0.10",
 ]
 
 [[package]]
@@ -4169,6 +4130,17 @@ name = "syn"
 version = "2.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17b6f705963418cdb9927482fa304bc562ece2fdd4f616084c50b7023b435a40"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "3.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ae9ccbea3a7b0b09443036490c8f34a8b1b760fd345e5c0dae0aac718faea79"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5956,27 +5928,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "xml-rs"
-version = "0.8.27"
+name = "xml"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fd8403733700263c6eb89f192880191f1b83e332f7a20371ddcf421c4a337c7"
+checksum = "2f45bb2c13fec6a6cb4c0f76a7e94839e110a14ec803ec2940777a94c347bc52"
 
 [[package]]
 name = "yaserde"
-version = "0.12.0"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bfa0d2b420fd005aa9b6f99f9584ebd964e6865d7ca787304cc1a3366c39231"
+checksum = "e9f6b774e7afd9d40002e67140a060951a2ddc494e2faef2498ad55f20c66c82"
 dependencies = [
  "log",
- "xml-rs",
+ "xml",
  "yaserde_derive",
 ]
 
 [[package]]
 name = "yaserde_derive"
-version = "0.12.0"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f785831c0e09e0f1a83f917054fd59c088f6561db5b2a42c1c3e1687329325f"
+checksum = "26caf626d6f9307024285cd9a9c1ba4b3eb29a9b61d3db632e22e676cf784367"
 dependencies = [
  "heck 0.5.0",
  "log",
@@ -5984,8 +5956,7 @@ dependencies = [
  "quote",
  "serde",
  "serde_tokenstream",
- "syn 2.0.104",
- "xml-rs",
+ "syn 3.0.10",
 ]
 
 [[package]]

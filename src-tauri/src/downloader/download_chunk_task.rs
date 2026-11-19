@@ -14,6 +14,8 @@ use crate::{
     extensions::AppHandleExt,
 };
 
+use super::chunk_transfer::DownloadChunkResult;
+
 pub struct DownloadChunkTask {
     pub download_task: Arc<DownloadTask>,
     pub start: u64,
@@ -34,7 +36,7 @@ impl DownloadChunkTask {
             end = self.end,
         )
     )]
-    pub async fn process(self) -> eyre::Result<usize> {
+    pub async fn process(self) -> eyre::Result<DownloadChunkResult> {
         let download_chunk_task = self.download_chunk();
         tokio::pin!(download_chunk_task);
 
@@ -49,6 +51,12 @@ impl DownloadChunkTask {
         loop {
             let state_is_downloading = *state_receiver.borrow() == DownloadTaskState::Downloading;
             tokio::select! {
+                biased;
+                // Prefer interruption over a simultaneously completed download.
+                _ = restart_receiver.changed() => break Ok(DownloadChunkResult::Interrupted),
+
+                _ = delete_receiver.changed() => break Ok(DownloadChunkResult::Interrupted),
+
                 result = &mut download_chunk_task, if state_is_downloading && permit.is_some() => break result,
 
                 result = self.acquire_chunk_permit(&mut permit), if state_is_downloading && permit.is_none() => {
@@ -67,19 +75,12 @@ impl DownloadChunkTask {
                         }
                     }
                 },
-                // FIXME: 直接返回chunk_index存在进度误标风险
-                // 上层会将这个分片标记为已下载，而分片其实是被打断的
-                // 应该把返回值改成 enum DownloadChunkResult { Downloaded(idx), Interrupted }
-                // 然后由上层处理
-                _ = restart_receiver.changed() => break Ok(self.chunk_index),
-
-                _ = delete_receiver.changed() => break Ok(self.chunk_index),
             }
         }
     }
 
     #[instrument(level = "error", skip_all)]
-    async fn download_chunk(&self) -> eyre::Result<usize> {
+    async fn download_chunk(&self) -> eyre::Result<DownloadChunkResult> {
         let bili_client = self.download_task.app.get_bili_client();
         let chunk_data = bili_client
             .get_media_chunk(&self.url, self.start, self.end)
@@ -106,7 +107,7 @@ impl DownloadChunkTask {
             .chunk_download_interval_sec;
         sleep(Duration::from_secs(chunk_download_interval_sec)).await;
 
-        Ok(self.chunk_index)
+        Ok(DownloadChunkResult::Downloaded(self.chunk_index))
     }
 
     #[instrument(level = "error", skip_all)]

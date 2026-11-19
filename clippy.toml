@@ -1,0 +1,6 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+disallowed-methods = [
+  { path = "std::thread::sleep", reason = "Use tokio::time::sleep in async work; isolate necessary blocking work with spawn_blocking." },
+]

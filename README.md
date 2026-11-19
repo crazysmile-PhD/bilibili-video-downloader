@@ -4,6 +4,8 @@
 
 # 📺哔哩哔哩视频下载器
 
+开发与维护：[工程规则及研究依据](docs/engineering.md) · [重构工作清单](docs/refactoring-plan.md)
+
 哔哩哔哩 bilibili B站 视频 下载器，普通视频、充电视频、番剧、电视剧、电影、课程 全都支持下载，图形界面 + nfo刮削 + 广告标记 + 字幕下载 + 弹幕下载，轻松将视频加入emby等媒体库
 
 ## 📥 快速下载
@@ -92,6 +94,10 @@ pnpm tauri build
 ```
 
 ## 🤝提交PR
+
+架构改善工作清单、模块边界与回归测试说明见 [重构工作清单](docs/refactoring-plan.md)。
+
+使用 Node.js 22.18 或更新版本，可运行 `pnpm test:frontend` 检查前端下载状态逻辑；`pnpm test:backend` 检查下载核心及插件。`pnpm test` 会依次运行两者。
 
 **PR请基于`develop`分支开发，并提交至`develop`分支**
 

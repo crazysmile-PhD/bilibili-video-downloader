@@ -73,10 +73,29 @@ impl Config {
 
     #[instrument(level = "error", skip_all)]
     pub fn save(&self, app: &AppHandle) -> eyre::Result<()> {
+        self.validate()?;
         let app_data_dir = app.path().app_data_dir()?;
         let config_path = app_data_dir.join("config.json");
-        let config_string = serde_json::to_string_pretty(self)?;
-        std::fs::write(config_path, config_string)?;
+        crate::storage::write_pretty_json_atomic(&config_path, self)
+    }
+
+    pub fn validate(&self) -> eyre::Result<()> {
+        for (field, value) in [
+            ("task_concurrency", self.task_concurrency),
+            ("chunk_concurrency", self.chunk_concurrency),
+        ] {
+            eyre::ensure!(
+                (1..=tokio::sync::Semaphore::MAX_PERMITS).contains(&value),
+                "{field} 必须在 1 到 {} 之间",
+                tokio::sync::Semaphore::MAX_PERMITS
+            );
+        }
+        if self.proxy_mode == ProxyMode::Custom {
+            eyre::ensure!(
+                !self.proxy_host.trim().is_empty() && self.proxy_port > 0,
+                "自定义代理必须包含有效的地址和端口"
+            );
+        }
         Ok(())
     }
 
@@ -204,3 +223,41 @@ const DEFAULT_AUDIO_QUALITY_PRIORITY: &[AudioQuality] = &[
 
 const DEFAULT_CODEC_TYPE_PRIORITY: &[CodecType] =
     &[CodecType::AVC, CodecType::HEVC, CodecType::AV1];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_concurrency_before_semaphore_creation() {
+        let mut config = Config::default(Path::new("."));
+        assert!(config.validate().is_ok());
+        config.task_concurrency = 0;
+        assert!(config.validate().is_err());
+        config.task_concurrency = 1;
+        config.chunk_concurrency = 0;
+        assert!(config.validate().is_err());
+        config.chunk_concurrency = tokio::sync::Semaphore::MAX_PERMITS + 1;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_incomplete_custom_proxy_and_preserves_priorities_on_reconciliation() {
+        let mut config = Config::default(Path::new("."));
+        config.proxy_mode = ProxyMode::Custom;
+        config.proxy_host.clear();
+        assert!(config.validate().is_err());
+        config.proxy_host = "127.0.0.1".into();
+        config.proxy_port = 0;
+        assert!(config.validate().is_err());
+        config.proxy_port = 7890;
+        assert!(config.validate().is_ok());
+        config.codec_type_priority = vec![CodecType::AV1];
+        config.reconcile_priority_lists();
+        config.reconcile_priority_lists();
+        assert_eq!(
+            config.codec_type_priority,
+            vec![CodecType::AV1, CodecType::AVC, CodecType::HEVC]
+        );
+    }
+}

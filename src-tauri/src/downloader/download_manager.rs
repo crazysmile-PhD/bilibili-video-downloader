@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -10,17 +9,12 @@ use std::{
 
 use eyre::{WrapErr, eyre};
 use parking_lot::RwLock;
-use rayon::prelude::*;
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
-use tokio::{
-    sync::{Semaphore, oneshot},
-    task::JoinSet,
-};
-use tracing::{Instrument, instrument};
+use tokio::sync::Semaphore;
+use tracing::instrument;
 
 use crate::{
-    downloader::download_progress::DownloadProgress,
     events::DownloadEvent,
     extensions::{AppHandleExt, EyreReportToMessage},
     types::{
@@ -29,10 +23,14 @@ use crate::{
     },
 };
 
-use super::download_task::{DownloadTask, RestoredDownloadTask};
+use super::{
+    download_task::{DownloadTask, RestoredDownloadTask},
+    progress_store::{ProgressStore, read_progresses},
+};
 
 pub struct DownloadManager {
     pub app: AppHandle,
+    pub progress_store: ProgressStore,
     pub task_sem: Arc<Semaphore>,
     pub media_chunk_sem: Arc<Semaphore>,
     pub byte_per_sec: Arc<AtomicU64>,
@@ -40,14 +38,16 @@ pub struct DownloadManager {
 }
 
 impl DownloadManager {
-    pub fn new(app: AppHandle) -> Self {
+    pub fn new(app: AppHandle) -> eyre::Result<Self> {
         let (task_concurrency, chunk_concurrency) = {
             let config = app.get_config().inner().read();
             (config.task_concurrency, config.chunk_concurrency)
         };
 
+        let progress_store = ProgressStore::new(app.path().app_data_dir()?.join(".下载任务"))?;
         let manager = Self {
             app,
+            progress_store,
             task_sem: Arc::new(Semaphore::new(task_concurrency)),
             media_chunk_sem: Arc::new(Semaphore::new(chunk_concurrency)),
             byte_per_sec: Arc::new(AtomicU64::new(0)),
@@ -59,101 +59,42 @@ impl DownloadManager {
             manager.byte_per_sec.clone(),
         ));
 
-        manager
+        Ok(manager)
     }
 
     #[instrument(level = "error", skip_all)]
     pub async fn restore_download_tasks(&self) -> eyre::Result<Vec<RestoredDownloadTask>> {
-        struct TaskFile {
-            path: PathBuf,
-            content: String,
-        }
-
-        let task_dir = self.get_task_dir()?;
-        std::fs::create_dir_all(&task_dir)
-            .wrap_err(format!("创建下载任务目录`{}`失败", task_dir.display()))?;
-
-        let mut join_set = JoinSet::new();
-        for entry in std::fs::read_dir(&task_dir)?.filter_map(Result::ok) {
-            let read_task_file = async move {
-                let path = entry.path();
-
-                let extension = path.extension().and_then(|s| s.to_str());
-                if extension != Some("json") {
-                    // 如果这个文件不是json则删除
-                    let _ = tokio::fs::remove_file(path).await;
-                    return None;
-                }
-
-                let content = match tokio::fs::read_to_string(&path)
-                    .await
-                    .map_err(eyre::Report::from)
-                {
-                    Ok(content) => content,
-                    Err(err) => {
-                        let err_title = format!("读取下载任务文件`{}`失败", path.display());
-                        let message = err.to_message();
-                        tracing::error!(err_title, message);
-                        return None;
-                    }
-                };
-
-                Some(TaskFile { path, content })
-            };
-
-            join_set.spawn(read_task_file.in_current_span());
-        }
-
-        let mut task_files = Vec::new();
-        while let Some(join_result) = join_set.join_next().await {
-            let Ok(Some(task_file)) = join_result else {
-                continue;
-            };
-
-            task_files.push(task_file);
-        }
-
-        let (progresses_sender, progresses_receiver) = oneshot::channel();
-        rayon::spawn(move || {
-            let progresses = task_files
-                .into_par_iter()
-                .filter_map(|task_file| {
-                    if let Ok(progress) = serde_json::from_str(&task_file.content) {
-                        Some(progress)
-                    } else {
-                        // 如果这个json解析失败则删除
-                        let _ = std::fs::remove_file(&task_file.path);
-                        None
-                    }
-                })
-                .collect();
-
-            let _ = progresses_sender.send(progresses);
-        });
-        let progresses: Vec<DownloadProgress> = progresses_receiver.await?;
-
+        let directory = self.progress_store.directory().to_owned();
+        let progresses = tokio::task::spawn_blocking(move || read_progresses(&directory))
+            .await
+            .wrap_err("读取下载任务工作异常退出")??;
         let mut tasks = self.download_tasks.write();
-        let mut restored_tasks = Vec::new();
-
         for progress in progresses {
-            let new_task = DownloadTask::from_progress(self.app.clone(), progress.clone());
-            let state = *new_task.state_sender.borrow();
-
-            let old_task = tasks.insert(new_task.task_id.clone(), new_task);
-            if let Some(old_task) = old_task {
-                // 如果同一个ID的下载任务已经存在，则取消旧的任务
-                old_task.cancel();
+            // Repeated restoration must not replace an active task with an older
+            // disk snapshot. Recheck files removed while the read was running.
+            if tasks.contains_key(&progress.task_id) {
+                continue;
             }
-
-            restored_tasks.push(RestoredDownloadTask { state, progress });
+            if !self.progress_store.contains(&progress.task_id)? {
+                continue;
+            }
+            let task = DownloadTask::from_progress(self.app.clone(), progress);
+            tasks.insert(task.task_id.clone(), task);
         }
-
-        Ok(restored_tasks)
+        Ok(tasks
+            .values()
+            .map(|task| RestoredDownloadTask {
+                state: *task.state_sender.borrow(),
+                progress: task.progress.read().clone(),
+            })
+            .collect())
     }
 
     pub fn create_download_tasks(&self, params: &CreateDownloadTaskParams) {
-        let new_tasks = DownloadTask::from_params(&self.app, params);
+        // Restoration must not discover a new checkpoint before registration and
+        // create a second live task for the same ID.
         let mut tasks = self.download_tasks.write();
+        let new_tasks = DownloadTask::from_params(&self.app, params);
         for new_task in new_tasks {
             tasks.insert(new_task.task_id.clone(), new_task);
         }
@@ -274,12 +215,5 @@ impl DownloadManager {
             let speed = format!("{mega_byte_per_sec:.2}MB/s");
             let _ = DownloadEvent::Speed { speed }.emit(&app);
         }
-    }
-
-    #[instrument(level = "error", skip_all)]
-    fn get_task_dir(&self) -> eyre::Result<PathBuf> {
-        let app_data_dir = self.app.path().app_data_dir()?;
-        let task_dir = app_data_dir.join(".下载任务");
-        Ok(task_dir)
     }
 }

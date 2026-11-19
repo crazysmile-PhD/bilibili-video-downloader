@@ -1,4 +1,4 @@
-<script setup lang="tsx">
+<script setup lang="ts">
 import { onMounted, ref, provide, useTemplateRef } from 'vue'
 import { useStore } from './store.ts'
 import LogDialog from './dialogs/LogDialog.vue'
@@ -25,8 +25,6 @@ import { searchPaneRefKey, navDownloadButtonRefKey } from './injection_keys.ts'
 import BangumiFollowPane from './panes/BangumiFollow/BangumiFollowPane.vue'
 import HistoryPane from './panes/HistoryPane/HistoryPane.vue'
 import { NBadge, NButton, NIcon, NTooltip } from 'naive-ui'
-
-export type CurrentNavName = 'search' | 'fav' | 'history' | 'bangumi_follow' | 'watch_later' | 'download'
 
 const currentPlatform = platform()
 

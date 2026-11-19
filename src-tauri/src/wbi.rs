@@ -1,11 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use eyre::{OptionExt, WrapErr, eyre};
+use eyre::{OptionExt, WrapErr};
 use md5::{Digest, Md5};
 use serde::Deserialize;
 use tracing::instrument;
 
-use crate::bili_client::{BiliClient, BiliResp};
+use crate::bili_client::{BiliClient, read_api_response};
 
 const MIXIN_KEY_ENC_TAB: [usize; 64] = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29,
@@ -43,7 +43,7 @@ impl BiliClient {
             .collect::<Vec<_>>()
             .join("&");
         // 计算签名
-        let web_sign = format!("{:x}", Md5::digest(query.clone() + &mixin_key));
+        let web_sign = md5_hex(query + &mixin_key);
         params.push(("w_rid", web_sign));
         Ok(())
     }
@@ -51,29 +51,10 @@ impl BiliClient {
     #[instrument(level = "error", skip_all)]
     async fn get_wbi_keys(&self) -> eyre::Result<(String, String)> {
         let request = self
-            .api_client
-            .read()
-            .get("https://api.bilibili.com/x/web-interface/nav")
+            .api_request("https://api.bilibili.com/x/web-interface/nav")
             .header("Cookie", &self.get_cookie());
 
-        let http_resp = request.send().await?;
-        // 检查http响应状态码
-        let status = http_resp.status();
-        let body = http_resp.text().await?;
-        if status != reqwest::StatusCode::OK {
-            return Err(eyre!("预料之外的状态码({status}): {body}"));
-        }
-        // 尝试将body解析为BiliResp
-        let bili_resp: BiliResp =
-            serde_json::from_str(&body).wrap_err(format!("将body解析为BiliResp失败: {body}"))?;
-        // 检查BiliResp的data是否存在
-        let Some(data) = bili_resp.data else {
-            return Err(eyre!("BiliResp中不存在data字段: {bili_resp:?}"));
-        };
-        // 尝试将data解析为Data
-        let data_str = data.to_string();
-        let wei_resp_data: WeiRespData = serde_json::from_str(&data_str)
-            .wrap_err(format!("将data解析为Data失败: {data_str}"))?;
+        let wei_resp_data: WeiRespData = read_api_response(request.send().await?).await?;
 
         let img_url = wei_resp_data.wbi_img.img_url;
         let sub_url = wei_resp_data.wbi_img.sub_url;
@@ -120,4 +101,30 @@ fn take_filename(url: &str) -> Option<String> {
     url.rsplit_once('/')
         .and_then(|(_, s)| s.rsplit_once('.'))
         .map(|(s, _)| s.to_string())
+}
+
+fn md5_hex(value: impl AsRef<[u8]>) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(32);
+    for byte in Md5::digest(value) {
+        output.push(char::from(HEX[usize::from(byte >> 4)]));
+        output.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::md5_hex;
+
+    #[test]
+    fn signature_digest_preserves_lowercase_hex_and_leading_zeroes() {
+        for (input, expected) in [
+            ("", "d41d8cd98f00b204e9800998ecf8427e"),
+            ("abc", "900150983cd24fb0d6963f7d28e17f72"),
+            ("a", "0cc175b9c0f1b6a831c399e269772661"),
+        ] {
+            assert_eq!(md5_hex(input), expected);
+        }
+    }
 }

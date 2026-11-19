@@ -2,6 +2,7 @@ use std::{ffi::c_char, path::PathBuf, sync::Arc};
 
 use bilibili_video_downloader_plugin_api::v1::{HookPointV1, HostApiV1, PluginDescriptorV1};
 use dlopen2::wrapper::{Container, WrapperApi};
+use parking_lot::Mutex;
 
 #[derive(WrapperApi)]
 pub struct PluginDylibApi {
@@ -29,6 +30,9 @@ pub struct PluginRuntime {
     pub enabled: bool,
     pub priority: i32,
     pub api: Arc<Container<PluginDylibApi>>,
+    // The V1 ABI's last_error pointer is valid only until the next plugin call.
+    // Runtime clones must share this lock, including while copying/freeing output.
+    pub call_lock: Arc<Mutex<()>>,
 }
 
 impl PluginRuntime {

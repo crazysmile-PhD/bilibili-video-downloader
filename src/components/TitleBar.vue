@@ -2,7 +2,7 @@
 import icon from '../../src-tauri/icons/128x128.png'
 import { PhCopySimple, PhMinus, PhPushPin, PhSquare, PhX } from '@phosphor-icons/vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useStore } from '../store.ts'
 import { platform } from '@tauri-apps/plugin-os'
 import { ensureHttps } from '../utils.tsx'
@@ -19,19 +19,40 @@ const currentPlatform = platform()
 
 const loginDialogShowing = ref<boolean>(false)
 
-onMounted(async () => {
+let disposed = false
+let unlistenResize: (() => void) | undefined
+
+async function updateWindowState() {
   windowMaximised.value = await appWindow.isMaximized()
   windowFullscreen.value = await appWindow.isFullscreen()
+}
 
-  await appWindow.onResized(async () => {
-    windowMaximised.value = await appWindow.isMaximized()
-    windowFullscreen.value = await appWindow.isFullscreen()
-  })
+onMounted(async () => {
+  try {
+    await updateWindowState()
+    const unlisten = await appWindow.onResized(() => {
+      updateWindowState().catch(console.error)
+    })
+    if (disposed) unlisten()
+    else unlistenResize = unlisten
+  } catch (error) {
+    console.error('读取窗口状态失败', error)
+  }
 })
 
-function handleAlwaysOnTopButton() {
-  windowAlwaysOnTop.value = !windowAlwaysOnTop.value
-  appWindow.setAlwaysOnTop(windowAlwaysOnTop.value)
+onUnmounted(() => {
+  disposed = true
+  unlistenResize?.()
+})
+
+async function handleAlwaysOnTopButton() {
+  const enabled = !windowAlwaysOnTop.value
+  try {
+    await appWindow.setAlwaysOnTop(enabled)
+    windowAlwaysOnTop.value = enabled
+  } catch (error) {
+    console.error('设置窗口置顶失败', error)
+  }
 }
 </script>
 

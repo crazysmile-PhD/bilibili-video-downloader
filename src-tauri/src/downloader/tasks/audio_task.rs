@@ -1,12 +1,6 @@
-use std::{
-    collections::HashMap,
-    fs::{File, OpenOptions},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use eyre::{WrapErr, eyre};
-use fs4::fs_std::FileExt;
-use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
@@ -16,10 +10,12 @@ use tracing::{Instrument, instrument};
 use crate::{
     config::FileExistAction,
     downloader::{
-        download_chunk_task::DownloadChunkTask, download_progress::DownloadProgress,
-        download_task::DownloadTask, media_chunk::MediaChunk,
+        download_progress::DownloadProgress,
+        download_task::DownloadTask,
+        media_chunk::MediaChunk,
+        media_download::{MediaKind, download_media},
     },
-    extensions::{AppHandleExt, EyreReportToMessage},
+    extensions::AppHandleExt,
     types::{
         audio_quality::AudioQuality, bangumi_media_url::BangumiMediaUrl,
         cheese_media_url::CheeseMediaUrl, normal_media_url::NormalMediaUrl,
@@ -327,81 +323,15 @@ impl AudioTask {
             "{filename}.m4a.com.lanyeeee.bilibili-video-downloader"
         ));
 
-        let should_reuse_temp_file = temp_file_path
-            .metadata()
-            .map(|m| m.len() == audio_task.content_length)
-            .unwrap_or(false);
-
-        let file = if should_reuse_temp_file {
-            // 如果临时文件可以重用，则直接打开它
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&temp_file_path)?
-        } else {
-            // 如果临时文件不能重用，则创建个新的
-            let file = File::create(&temp_file_path)?;
-            file.allocate(audio_task.content_length)?;
-            file
-        };
-        let file = Arc::new(Mutex::new(file));
-
-        let chunk_count = audio_task.chunks.len();
-
-        let mut join_set = JoinSet::new();
-        for (chunk_index, chunk) in audio_task.chunks.iter().enumerate() {
-            if chunk.completed {
-                continue;
-            }
-
-            let (start, end) = (chunk.start, chunk.end);
-
-            let download_chunk_task = DownloadChunkTask {
-                download_task: download_task.clone(),
-                start,
-                end,
-                url: audio_task.url.clone(),
-                file: file.clone(),
-                chunk_index,
-            };
-
-            let chunk_order = chunk_index + 1;
-            let chunk_task = async move {
-                download_chunk_task.process().await.wrap_err(format!(
-                    "分片`{chunk_order}/{chunk_count}`下载失败({start}-{end})"
-                ))
-            };
-            join_set.spawn(chunk_task.in_current_span());
-        }
-
-        while let Some(join_result) = join_set.join_next().await {
-            let Ok(download_audio_result) = join_result else {
-                continue;
-            };
-
-            match download_audio_result {
-                Ok(i) => download_task.update_progress(|p| p.audio_task.chunks[i].completed = true),
-                Err(err) => {
-                    let err_title = "音频的一个分片下载失败";
-                    let message = err.to_message();
-                    tracing::error!(err_title, message);
-                }
-            }
-        }
-
-        let download_completed = download_task
-            .progress
-            .read()
-            .audio_task
-            .chunks
-            .iter()
-            .all(|chunk| chunk.completed);
-        if !download_completed {
-            return Err(eyre!(
-                "音频文件`{}`有分片未下载完成，[继续]可以跳过已下载分片断点续传",
-                temp_file_path.display()
-            ));
-        }
+        download_media(
+            download_task,
+            &temp_file_path,
+            &audio_task.url,
+            audio_task.content_length,
+            &audio_task.chunks,
+            MediaKind::Audio,
+        )
+        .await?;
 
         let is_audio_file_complete = utils::is_mp4_complete(&temp_file_path).wrap_err(format!(
             "检查音频文件`{}`是否完整失败",

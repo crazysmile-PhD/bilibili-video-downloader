@@ -8,7 +8,7 @@ import {
   VideoQuality,
   AudioQuality,
 } from '../../../bindings'
-import { ProgressData } from '../DownloadPane.vue'
+import type { ProgressData } from '../../../features/downloads/types.ts'
 import { NButton, NCheckbox, NSelect, NTooltip, SelectOption } from 'naive-ui'
 import { getAudioQualityName, getCodecTypeName, getVideoQualityName } from '../../../utils'
 

@@ -21,6 +21,10 @@ const navDownloadButtonRef = inject(navDownloadButtonRefKey)
 const rootDivRef = useTemplateRef('rootDivRef')
 const downloadButtonRef = useTemplateRef('downloadButtonRef')
 
+async function handleSearchClick() {
+  await searchPaneRef?.value?.search(`ss${props.ep.season_id}`, 'Bangumi')
+}
+
 async function handleDownloadClick() {
   if (props.downloadEpisode === undefined) {
     return
@@ -75,7 +79,7 @@ defineExpose({ playDownloadAnimation, ep: props.ep })
       <IconButton title="在浏览器中打开" :href="`https://www.bilibili.com/bangumi/play/ss${ep.season_id}`">
         <PhGoogleChromeLogo :size="24" />
       </IconButton>
-      <IconButton title="在下载器内搜索" @click="searchPaneRef?.search(`ss${props.ep.season_id}`, 'Bangumi')">
+      <IconButton title="在下载器内搜索" @click="handleSearchClick">
         <PhMagnifyingGlass :size="24" />
       </IconButton>
       <IconButton

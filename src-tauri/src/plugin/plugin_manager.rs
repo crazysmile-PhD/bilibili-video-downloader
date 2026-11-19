@@ -324,11 +324,7 @@ impl PluginManager {
             .into_iter()
             .map(|(plugin_path, info)| (plugin_path, info.into_metadata()))
             .collect();
-        let json_string = serde_json::to_string_pretty(&metadata_by_path)?;
-
-        std::fs::write(plugin_json_path, json_string)?;
-
-        Ok(())
+        crate::storage::write_pretty_json_atomic(&plugin_json_path, &metadata_by_path)
     }
 }
 

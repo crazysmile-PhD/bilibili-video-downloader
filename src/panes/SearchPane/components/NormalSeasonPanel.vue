@@ -1,4 +1,4 @@
-<script setup lang="tsx">
+<script setup lang="ts">
 import { commands, NormalSearchResult, UgcSeason, SectionInNormal } from '../../../bindings.ts'
 import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
 import { ref, nextTick, computed, watch, useTemplateRef } from 'vue'

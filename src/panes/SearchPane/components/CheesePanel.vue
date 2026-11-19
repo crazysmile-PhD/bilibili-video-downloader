@@ -1,4 +1,4 @@
-<script setup lang="tsx">
+<script setup lang="ts">
 import { CheeseSearchResult, commands } from '../../../bindings.ts'
 import { PartialSelectionOptions, SelectionArea } from '@viselect/vue'
 import { ref, nextTick, watch, computed, useTemplateRef } from 'vue'

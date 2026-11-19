@@ -12,11 +12,11 @@ const props = defineProps<{
   downloadButtonRef?: HTMLDivElement | null
 }>()
 
-function handleDownloadClick(aid: number, cid: number, event: MouseEvent) {
+async function handleDownloadClick(aid: number, cid: number, event: MouseEvent) {
   const from = event.currentTarget
   const to = props.downloadButtonRef
 
-  commands.createDownloadTasks({ Normal: { info: props.info, aid_cid_pairs: [[aid, cid]] } })
+  await commands.createDownloadTasks({ Normal: { info: props.info, aid_cid_pairs: [[aid, cid]] } })
 
   if (from instanceof Element && to !== undefined && to !== null) {
     playTaskToQueueAnimation(from, to)

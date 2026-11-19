@@ -1,12 +1,6 @@
-use std::{
-    collections::HashMap,
-    fs::{File, OpenOptions},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use eyre::{OptionExt, WrapErr, eyre};
-use fs4::fs_std::FileExt;
-use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::AppHandle;
@@ -16,10 +10,12 @@ use tracing::{Instrument, instrument};
 use crate::{
     config::FileExistAction,
     downloader::{
-        download_chunk_task::DownloadChunkTask, download_progress::DownloadProgress,
-        download_task::DownloadTask, media_chunk::MediaChunk,
+        download_progress::DownloadProgress,
+        download_task::DownloadTask,
+        media_chunk::MediaChunk,
+        media_download::{MediaKind, download_media},
     },
-    extensions::{AppHandleExt, EyreReportToMessage},
+    extensions::AppHandleExt,
     types::{
         bangumi_media_url::BangumiMediaUrl, cheese_media_url::CheeseMediaUrl,
         codec_type::CodecType, normal_media_url::NormalMediaUrl, video_quality::VideoQuality,
@@ -359,81 +355,15 @@ impl VideoTask {
             "{filename}.mp4.com.lanyeeee.bilibili-video-downloader"
         ));
 
-        let should_reuse_temp_file = temp_file_path
-            .metadata()
-            .map(|m| m.len() == video_task.content_length)
-            .unwrap_or(false);
-
-        let file = if should_reuse_temp_file {
-            // 如果临时文件可以重用，则直接打开它
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&temp_file_path)?
-        } else {
-            // 如果临时文件不能重用，则创建个新的
-            let file = File::create(&temp_file_path)?;
-            file.allocate(video_task.content_length)?;
-            file
-        };
-        let file = Arc::new(Mutex::new(file));
-
-        let chunk_count = video_task.chunks.len();
-
-        let mut join_set = JoinSet::new();
-        for (chunk_index, chunk) in video_task.chunks.iter().enumerate() {
-            if chunk.completed {
-                continue;
-            }
-
-            let (start, end) = (chunk.start, chunk.end);
-
-            let download_chunk_task = DownloadChunkTask {
-                download_task: download_task.clone(),
-                start,
-                end,
-                url: video_task.url.clone(),
-                file: file.clone(),
-                chunk_index,
-            };
-
-            let chunk_order = chunk_index + 1;
-            let chunk_task = async move {
-                download_chunk_task.process().await.wrap_err(format!(
-                    "分片`{chunk_order}/{chunk_count}`下载失败({start}-{end})"
-                ))
-            };
-            join_set.spawn(chunk_task.in_current_span());
-        }
-
-        while let Some(join_result) = join_set.join_next().await {
-            let Ok(download_video_result) = join_result else {
-                continue;
-            };
-
-            match download_video_result {
-                Ok(i) => download_task.update_progress(|p| p.video_task.chunks[i].completed = true),
-                Err(err) => {
-                    let err_title = "视频的一个分片下载失败";
-                    let message = err.to_message();
-                    tracing::error!(err_title, message);
-                }
-            }
-        }
-        // 检查视频是否已下载完成
-        let download_completed = download_task
-            .progress
-            .read()
-            .video_task
-            .chunks
-            .iter()
-            .all(|chunk| chunk.completed);
-        if !download_completed {
-            return Err(eyre!(
-                "视频文件`{}`有分片未下载完成，[继续]可以跳过已下载分片断点续传",
-                temp_file_path.display()
-            ));
-        }
+        download_media(
+            download_task,
+            &temp_file_path,
+            &video_task.url,
+            video_task.content_length,
+            &video_task.chunks,
+            MediaKind::Video,
+        )
+        .await?;
 
         let is_video_file_complete = utils::is_mp4_complete(&temp_file_path).wrap_err(format!(
             "检查视频文件`{}`是否完整失败",

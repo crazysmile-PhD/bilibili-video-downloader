@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      benchmarks:
+        description: Run the repeatable JSON decoding benchmark on Linux
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          run_install: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:frontend
+      - run: pnpm test:frontend
+      - run: pnpm build
+
+  backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: '1.100.0'
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: |
+            src-tauri -> target
+            src-plugin -> target
+            src-plugin/examples -> target
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: |
+          cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
+          cargo fmt --all --manifest-path src-plugin/Cargo.toml -- --check
+          cargo fmt --all --manifest-path src-plugin/examples/Cargo.toml -- --check
+      - name: Clippy with zero warnings
+        run: |
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path src-plugin/Cargo.toml --workspace --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path src-plugin/examples/Cargo.toml --workspace --all-targets -- -D warnings
+      - name: Test backend and plugin workspaces
+        run: |
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+          cargo test --locked --manifest-path src-plugin/Cargo.toml --workspace
+          cargo test --locked --manifest-path src-plugin/examples/Cargo.toml --workspace
+      - name: Run optional benchmark
+        if: github.event_name == 'workflow_dispatch' && inputs.benchmarks && runner.os == 'Linux'
+        env:
+          BENCH_OUTPUT: ${{ github.workspace }}/api-decode-benchmark.json
+        run: cargo bench --locked --manifest-path src-tauri/Cargo.toml --bench api_decode
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'workflow_dispatch' && inputs.benchmarks && runner.os == 'Linux'
+        with:
+          name: api-decode-benchmark
+          path: api-decode-benchmark.json
+          if-no-files-found: error
+
+  quality-gate:
+    if: always()
+    needs: [frontend, backend]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every check to succeed
+        env:
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+        run: |
+          test "$FRONTEND_RESULT" = success
+          test "$BACKEND_RESULT" = success

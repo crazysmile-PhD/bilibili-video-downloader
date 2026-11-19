@@ -1,4 +1,5 @@
 pub mod chapter_segments;
+pub mod chunk_transfer;
 pub mod download_chunk_task;
 pub mod download_manager;
 pub mod download_progress;
@@ -7,5 +8,8 @@ pub mod download_task_state;
 pub mod episode_info;
 pub mod episode_type;
 pub mod fmt_params;
+pub mod http_range;
 pub mod media_chunk;
+pub mod media_download;
+pub mod progress_store;
 pub mod tasks;

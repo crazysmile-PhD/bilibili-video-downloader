@@ -87,6 +87,8 @@ pnpm build
 
 ## 後續量測與整合驗證
 
+TypeScript 7 批次：直接編譯器升級為官方 7.0.2；為依賴 classic Compiler API 的開發工具接上 tsgo 7.0.2 原生橋接，保留 Vue 型別與 Promise 規則。工具替代的比較、依賴邊界與錯誤範例見 [工程文件](engineering.md#typescript-7-的檢查功能)。
+
 依賴更新批次涵蓋前端、Rust 三個 workspace 與所有 workflow Actions；相容性取捨見 [工程文件](engineering.md#依賴更新與相容性)。同一批保留既有 WebView 編譯目標與 Specta 契約，並加入 WBI 雜湊格式的回歸測試。
 
 - [ ] 重現並測試暫停、重來、刪除的競態，再決定是否需要獨立狀態機。
@@ -100,6 +102,6 @@ pnpm build
 
 第一批需通過前端格式、ESLint、TypeScript、正式建置與單元測試，以及 Rust 格式、Clippy 與單元測試。測試不依賴 Bilibili 帳號或外部 CDN。真實登入、下載及桌面互動仍需另外驗證。
 
-驗收涵蓋 16 個前端測試、29 個 Rust 核心測試與 1 個插件測試；三個 Rust workspace 的格式與零警告 Clippy、ESLint、TypeScript、Prettier、前端正式建置及所有 workflow 的 actionlint 一併檢查。XML 巨集的相容性警告已修正，沒有關閉該警告。
+驗收涵蓋 21 個前端測試、29 個 Rust 核心測試與 1 個插件測試；三個 Rust workspace 的格式與零警告 Clippy、ESLint、TypeScript、Prettier、前端正式建置及所有 workflow 的 actionlint 一併檢查。XML 巨集的相容性警告已修正，沒有關閉該警告。
 
 三次獨立程序的 JSON 解碼微基準，配對加速比中位數為 1.60–1.71×，原始樣本與限制見 [量測記錄](benchmarks/2026-11-19/README.md)。前端建置仍會提示既有的單一 JavaScript bundle 大於 500 kB，是否拆包待效能量測後決定。

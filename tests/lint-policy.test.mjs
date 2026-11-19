@@ -18,3 +18,22 @@ test('CI lint policy rejects unhandled promises and accepts explicit failure han
   })
   assert.equal(valid.errorCount, 0, JSON.stringify(valid.messages))
 })
+
+test('CI lint policy checks unhandled promises inside Vue scripts', async () => {
+  const [result] = await eslint.lintText(
+    '<script setup lang="ts">\nPromise.resolve(1)\n</script>\n<template><div /></template>',
+    { filePath: 'src/AppContent.vue' },
+  )
+  assert.ok(
+    result.messages.some((message) => message.ruleId === '@typescript-eslint/no-floating-promises'),
+    JSON.stringify(result.messages),
+  )
+})
+
+test('CI lint policy rejects promises returned to synchronous callbacks', async () => {
+  const [result] = await eslint.lintText('export function run() { [1].forEach(async () => {}) }', { filePath })
+  assert.ok(
+    result.messages.some((message) => message.ruleId === '@typescript-eslint/no-misused-promises'),
+    JSON.stringify(result.messages),
+  )
+})

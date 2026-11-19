@@ -72,10 +72,24 @@ pnpm benchmark
 2026-11-19 更新前端、三個 Cargo 鎖檔，以及 CI、發布與 issue 處理使用的 Actions。前端採 Node.js 24 以上與 packageManager 固定的 pnpm 12.21.0；CI 與發布使用相同的 Node／Rust 版本及 frozen lockfile。
 
 - Vite 8、Vue 3.5、Pinia 4、ESLint 10、vue-tsc 3 及其相容套件已更新。明確保留 Vite 6 原有的瀏覽器編譯目標，避免工具升級同時提高 WebView 門檻。
-- TypeScript 使用 6.0.3；typescript-eslint 8.73.0 的官方 peer 範圍是 `>=4.8.4 <6.1.0`，因此未強制安裝 TypeScript 7。
+- 專案直接使用官方 `typescript@7.0.2`。Vue 與 ESLint 需要的 Compiler API 由 `typescript-native-bridge@6.0.3-bridge.19.tsgo.7.0.2` 提供；其中 `6.0.3` 是 JS API 相容層版本，`tsgo.7.0.2` 是實際執行型別判斷的 Go 引擎版本。
 - Tauri、HTTP client／middleware／retry、檔案配置、鎖、雜湊及其他 Rust 依賴同步更新。HTTP 的 query feature 改為明確啟用；MD5 升級後以已知向量驗證 WBI 所需的 32 字元小寫十六進位格式。
 - Specta／tauri-specta／specta-typescript 保留既有協調版本。此組依賴負責產生前後端命令契約；遷移新版預發行 API 應獨立驗證，不能以較舊的 stable 1.x 取代現有 2.x RC。
 - Actions 使用完整 commit SHA，旁註已驗證的版本。更新時同時核對上游 release notes、Action 輸入及 Node runtime；不要只修改註解或放寬合併門檻。
 - pnpm 保留未審核建置腳本即失敗的預設，只允許 `vue-demi@0.14.10` 的本機 Vue 版本橋接腳本，以及 `fsevents@2.3.3` 在 macOS 以 node-gyp 建置檔案監看的原生綁定。前端 CI 擴及三平台，驗證這些安裝及打包差異。`minimumReleaseAgeExclude` 只記錄本次明確選用的新發布 CLI／virtua 版本，不使用全域停用或萬用字元。
 
 版本依據：[npm 官方 registry](https://registry.npmjs.org/)、[crates.io](https://crates.io/)、[Vite 遷移文件](https://vite.dev/guide/migration)、[pnpm 建置設定](https://pnpm.io/settings/build)，以及各 Action 的官方 releases。合併前須讓更新後的鎖檔、檢查、測試及建置重新通過；版本更新本身不構成效能改善證據。
+
+### TypeScript 7 的檢查功能
+
+直接安裝官方 7.0.2 時，已實際重現 `vue-tsc` 找不到 `typescript/lib/tsc` 的失敗。改用 Vue 維護者提供的 [原生 API 橋接器](https://github.com/johnsoncodehk/typescript-native-bridge)，讓舊 API 工具使用 7.0.2 型別引擎；此路徑亦見 [Vue 維護者的支援說明](https://github.com/vuejs/language-tools/issues/5381)。
+
+`.pnpmfile.cjs` 只調整 typescript-eslint 8、Vue ESLint 10、vue-tsc 3 與 Volar TypeScript 2 的工具依賴；根目錄官方 TypeScript 7 與 CLI 維持獨立。這些工具的 classic API peer 改為明確依賴原生橋接器，沒有修改工具的原始碼或關閉 lint 規則。更新工具主要版本時需重新驗證此邊界。
+
+工具選擇以實際攔錯能力為準。比較中的 Oxlint 1.94.0／oxlint-tsgolint 7.0.2007 在同一個漏接 Promise 案例只回報 TS 檔，未回報 Vue SFC，因而未用它取代現有 Vue 防線。已封存的 Vue-tsgo 原型亦未加入依賴。保留的方案通過全專案檢查，並新增以下反例驗收：
+
+- 官方 CLI 回報 TypeScript 7，API 橋接器綁定同一版 Go 引擎，Vue 檢查過程須回報原生橋接已啟用。
+- 正確的 Vue script、模板與元件 props 通過；故意錯誤的賦值、模板方法及 props 型別必須失敗。
+- 純 TS 與 Vue script 中未處理的 Promise、傳給同步 callback 的 Promise 必須被 lint 擋下；純邏輯匯入畫面仍須失敗。
+
+這些測試與既有型別、格式、建置及三平台 CI 一同執行。原生引擎載入失敗會讓檢查失敗，沒有退回 JS 型別檢查器的分支；既有七個 TSX SFC 的有限例外亦未擴大。

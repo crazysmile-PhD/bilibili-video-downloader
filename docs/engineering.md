@@ -51,6 +51,8 @@ CI（持續整合）會在 GitHub 收到變更時，自動執行檢查。本專�
 
 GitHub 的 Actions 開關與「檢查沒過禁止合併」是不同設定。分支保護應要求 `quality-gate` 並要求基底為最新；設定是否已套用需以 GitHub 的實際狀態確認。
 
+2026-11-19 已於本倉庫的 `main` 與 `develop` 套用並讀回確認：必要檢查限定由 GitHub Actions 提供的 `quality-gate`，要求基底為最新，管理員亦受限制，禁止強制推送及刪除分支。重構變更由 [PR #1](https://github.com/crazysmile-PhD/bilibili-video-downloader/pull/1) 驗證；這些遠端設定不會隨 clone 自動套用到其他倉庫。
+
 ## 效能量測
 
 ```sh

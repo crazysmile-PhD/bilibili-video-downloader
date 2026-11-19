@@ -58,7 +58,7 @@
 
 ## 測試命令
 
-前端測試使用 Node.js 內建測試工具與 TypeScript 型別移除功能，需要 Node.js 22.18 或更新版本；沒有新增測試套件。
+前端測試使用 Node.js 內建測試工具與 TypeScript 型別移除功能；依賴更新後統一使用 Node.js 24 或更新版本，沒有新增測試套件。
 
 ```sh
 pnpm install --frozen-lockfile
@@ -87,6 +87,8 @@ pnpm build
 
 ## 後續量測與整合驗證
 
+依賴更新批次涵蓋前端、Rust 三個 workspace 與所有 workflow Actions；相容性取捨見 [工程文件](engineering.md#依賴更新與相容性)。同一批保留既有 WebView 編譯目標與 Specta 契約，並加入 WBI 雜湊格式的回歸測試。
+
 - [ ] 重現並測試暫停、重來、刪除的競態，再決定是否需要獨立狀態機。
 - [ ] 量測進度序列化、鎖等待與磁碟寫入量，再決定是否需要合併高頻寫入。
 - [ ] 設定驗證與儲存已分離；進一步明確處理執行期並行度的生效時機與完整套用失敗回復。
@@ -98,6 +100,6 @@ pnpm build
 
 第一批需通過前端格式、ESLint、TypeScript、正式建置與單元測試，以及 Rust 格式、Clippy 與單元測試。測試不依賴 Bilibili 帳號或外部 CDN。真實登入、下載及桌面互動仍需另外驗證。
 
-本機驗證通過：16 個前端測試、28 個 Rust 核心測試與 1 個插件測試；三個 Rust workspace 的格式與零警告 Clippy、ESLint、TypeScript、Prettier、前端正式建置及 CI YAML actionlint 均通過。XML 巨集的相容性警告已修正，沒有關閉該警告。
+驗收涵蓋 16 個前端測試、29 個 Rust 核心測試與 1 個插件測試；三個 Rust workspace 的格式與零警告 Clippy、ESLint、TypeScript、Prettier、前端正式建置及所有 workflow 的 actionlint 一併檢查。XML 巨集的相容性警告已修正，沒有關閉該警告。
 
 三次獨立程序的 JSON 解碼微基準，配對加速比中位數為 1.60–1.71×，原始樣本與限制見 [量測記錄](benchmarks/2026-11-19/README.md)。前端建置仍會提示既有的單一 JavaScript bundle 大於 500 kB，是否拆包待效能量測後決定。

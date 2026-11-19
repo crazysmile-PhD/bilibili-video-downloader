@@ -5,7 +5,7 @@ use std::{
 };
 
 use eyre::{WrapErr, ensure};
-use fs4::fs_std::FileExt;
+use fs4::FileExt;
 use parking_lot::Mutex;
 
 use crate::extensions::AppHandleExt;

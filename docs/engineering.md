@@ -45,7 +45,7 @@ CI（持續整合）會在 GitHub 收到變更時，自動執行檢查。本專�
 
 `CI` workflow 在 PR、main／develop 推送、merge queue 與手動觸發時執行。取消已被新提交取代的舊工作，但不使用路徑過濾讓必要檢查跳過。
 
-1. 前端：鎖檔安裝、格式、ESLint、TypeScript、單元測試與正式建置。
+1. 前端：Windows／Linux／macOS 上執行鎖檔安裝、格式、ESLint、TypeScript、單元測試與正式建置，涵蓋原生打包工具的各平台依賴。
 2. 後端：固定 Rust 1.100.0，Windows／Linux／macOS 上執行零警告 Clippy、核心與插件測試；Linux 另檢查 Rust 格式。
 3. `quality-gate`：所有必要工作成功才通過；失敗、取消或跳過都不算成功。
 
@@ -66,3 +66,16 @@ pnpm benchmark
 一般 PR 不以短時間計時作為硬門檻；確定性的工作數上限、取消、內容一致性與型別規則是硬門檻。手動 CI 可選擇執行基準並保存 artifact；評估穩定基準後，再設定可說明的效能預算。
 
 本機三次程序的結果與完整樣本見 [2026-11-19 量測記錄](benchmarks/2026-11-19/README.md)。
+
+## 依賴更新與相容性
+
+2026-11-19 更新前端、三個 Cargo 鎖檔，以及 CI、發布與 issue 處理使用的 Actions。前端採 Node.js 24 以上與 packageManager 固定的 pnpm 12.21.0；CI 與發布使用相同的 Node／Rust 版本及 frozen lockfile。
+
+- Vite 8、Vue 3.5、Pinia 4、ESLint 10、vue-tsc 3 及其相容套件已更新。明確保留 Vite 6 原有的瀏覽器編譯目標，避免工具升級同時提高 WebView 門檻。
+- TypeScript 使用 6.0.3；typescript-eslint 8.73.0 的官方 peer 範圍是 `>=4.8.4 <6.1.0`，因此未強制安裝 TypeScript 7。
+- Tauri、HTTP client／middleware／retry、檔案配置、鎖、雜湊及其他 Rust 依賴同步更新。HTTP 的 query feature 改為明確啟用；MD5 升級後以已知向量驗證 WBI 所需的 32 字元小寫十六進位格式。
+- Specta／tauri-specta／specta-typescript 保留既有協調版本。此組依賴負責產生前後端命令契約；遷移新版預發行 API 應獨立驗證，不能以較舊的 stable 1.x 取代現有 2.x RC。
+- Actions 使用完整 commit SHA，旁註已驗證的版本。更新時同時核對上游 release notes、Action 輸入及 Node runtime；不要只修改註解或放寬合併門檻。
+- pnpm 保留未審核建置腳本即失敗的預設，只允許 `vue-demi@0.14.10` 的本機 Vue 版本橋接腳本，以及 `fsevents@2.3.3` 在 macOS 以 node-gyp 建置檔案監看的原生綁定。前端 CI 擴及三平台，驗證這些安裝及打包差異。`minimumReleaseAgeExclude` 只記錄本次明確選用的新發布 CLI／virtua 版本，不使用全域停用或萬用字元。
+
+版本依據：[npm 官方 registry](https://registry.npmjs.org/)、[crates.io](https://crates.io/)、[Vite 遷移文件](https://vite.dev/guide/migration)、[pnpm 建置設定](https://pnpm.io/settings/build)，以及各 Action 的官方 releases。合併前須讓更新後的鎖檔、檢查、測試及建置重新通過；版本更新本身不構成效能改善證據。

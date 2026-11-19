@@ -97,7 +97,7 @@ pnpm tauri build
 
 架构改善工作清单、模块边界与回归测试说明见 [重构工作清单](docs/refactoring-plan.md)。
 
-使用 Node.js 22.18 或更新版本，可运行 `pnpm test:frontend` 检查前端下载状态逻辑；`pnpm test:backend` 检查下载核心及插件。`pnpm test` 会依次运行两者。
+使用 Node.js 24 或更新版本及 package.json 指定的 pnpm，可运行 `pnpm test:frontend` 检查前端下载状态逻辑；`pnpm test:backend` 检查下载核心及插件。`pnpm test` 会依次运行两者。
 
 **PR请基于`develop`分支开发，并提交至`develop`分支**
 

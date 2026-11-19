@@ -11,6 +11,9 @@ const host = process.env.TAURI_DEV_HOST
 export default defineConfig(async () => ({
   plugins: [vue(), UnoCSS(), vueJsx({}), vueDevTools()],
 
+  // Preserve the Vite 6 browser baseline when upgrading the build tool.
+  build: { target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari14'] },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent vite from obscuring rust errors

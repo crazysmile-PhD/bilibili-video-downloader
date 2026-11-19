@@ -7,7 +7,7 @@ edition = "2024"
 name = "bilibili_video_downloader_plugin_api"
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 
 [lints]
 workspace = true

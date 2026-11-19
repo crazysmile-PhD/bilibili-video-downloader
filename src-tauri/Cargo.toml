@@ -15,53 +15,53 @@ name = "bilibili_video_downloader_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.7.6", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
-tauri-plugin-os = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-window-state = "2"
-dlopen2 = { version = "0.8.2" }
+tauri = { version = "2.12.7", features = [] }
+tauri-plugin-opener = "2.7.3"
+tauri-plugin-os = "2.4.0"
+tauri-plugin-dialog = "2.8.4"
+tauri-plugin-window-state = "2.5.0"
+dlopen2 = { version = "0.9.0" }
 bilibili-video-downloader-plugin-api = { path = "../src-plugin/plugin-api" }
 
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_repr = "0.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+serde_repr = "0.1.21"
 
 specta = { version = "=2.0.0-rc.20", features = ["serde_json"] }
 tauri-specta = { version = "=2.0.0-rc.20", features = ["derive", "typescript"] }
 specta-typescript = { version = "=0.0.7" }
 
-reqwest = { version = "0.12.22", default-features = false, features = ["default-tls", "system-proxy"] }
-reqwest-retry = { version = "0.7.0" }
-reqwest-middleware = { version = "0.4.2" }
+reqwest = { version = "0.13.5", default-features = false, features = ["native-tls", "system-proxy", "query"] }
+reqwest-retry = { version = "0.9.1" }
+reqwest-middleware = { version = "0.5.2", features = ["query"] }
 
-eyre = { version = "0.6.12" }
-parking_lot = { version = "0.12.4" }
-tracing = { version = "0.1.41" }
-tracing-subscriber = { version = "0.3.19", features = ["json", "time", "local-time"] }
-tracing-appender = { version = "0.2.3" }
+eyre = { version = "0.6.14" }
+parking_lot = { version = "0.13.0" }
+tracing = { version = "0.1.44" }
+tracing-subscriber = { version = "0.3.23", features = ["json", "time", "local-time"] }
+tracing-appender = { version = "0.2.5" }
 tracing-error = { version = "0.2.1" }
-notify = { version = "8.0.0" }
-tokio = { version = "1.46.0", features = ["full"] }
+notify = { version = "8.2.2" }
+tokio = { version = "1.54.1", features = ["full"] }
 byteorder = { version = "1.5.0" }
-strfmt = { version = "0.2.4" }
-uuid = { version = "1.17.0", features = ["v4"] }
-bytes = { version = "1.10.1" }
-fs4 = { version = "0.13.1" }
-num_enum = { version = "0.7.4" }
-chrono = { version = "0.4.41" }
-prost = { version = "0.14.1" }
+strfmt = { version = "0.2.6" }
+uuid = { version = "1.29.3", features = ["v4"] }
+bytes = { version = "1.12.2" }
+fs4 = { version = "1.1.0" }
+num_enum = { version = "0.7.6" }
+chrono = { version = "0.4.45" }
+prost = { version = "0.14.6" }
 yaserde = { version = "0.13.2", features = ["yaserde_derive"] }
 float-ord = { version = "0.3.2" }
-memchr = { version = "2.7.5" }
-md-5 = { version = "0.10.6" }
-rand = { version = "0.9.1" }
-base64 = { version = "0.22.1" }
+memchr = { version = "2.8.3" }
+md-5 = { version = "0.11.0" }
+rand = { version = "0.10.4" }
+base64 = { version = "0.23.1" }
 urlencoding = { version = "2.1.3" }
-tempfile = "3.20.0"
+tempfile = "3.27.0"
 
 [profile.release]
 strip = true

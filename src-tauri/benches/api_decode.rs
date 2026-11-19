@@ -5,7 +5,7 @@ mod response;
 use std::{hint::black_box, time::Instant};
 
 use eyre::WrapErr;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, PartialEq, Debug)]

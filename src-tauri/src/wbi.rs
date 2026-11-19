@@ -43,7 +43,7 @@ impl BiliClient {
             .collect::<Vec<_>>()
             .join("&");
         // 计算签名
-        let web_sign = format!("{:x}", Md5::digest(query.clone() + &mixin_key));
+        let web_sign = md5_hex(query + &mixin_key);
         params.push(("w_rid", web_sign));
         Ok(())
     }
@@ -101,4 +101,30 @@ fn take_filename(url: &str) -> Option<String> {
     url.rsplit_once('/')
         .and_then(|(_, s)| s.rsplit_once('.'))
         .map(|(s, _)| s.to_string())
+}
+
+fn md5_hex(value: impl AsRef<[u8]>) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(32);
+    for byte in Md5::digest(value) {
+        output.push(char::from(HEX[usize::from(byte >> 4)]));
+        output.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::md5_hex;
+
+    #[test]
+    fn signature_digest_preserves_lowercase_hex_and_leading_zeroes() {
+        for (input, expected) in [
+            ("", "d41d8cd98f00b204e9800998ecf8427e"),
+            ("abc", "900150983cd24fb0d6963f7d28e17f72"),
+            ("a", "0cc175b9c0f1b6a831c399e269772661"),
+        ] {
+            assert_eq!(md5_hex(input), expected);
+        }
+    }
 }
